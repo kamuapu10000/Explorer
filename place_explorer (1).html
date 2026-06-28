@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Hely Felfedező</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f5f4ee;color:#1a1a18;height:100dvh;overflow:hidden;user-select:none}
+.screen{position:fixed;inset:0;display:flex;flex-direction:column;background:#f5f4ee}
+.screen.hidden{display:none}
+
+/* Camera */
+#cam-screen{background:#000}
+#cam-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#cam-canvas{display:none}
+.cam-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:3rem 1.5rem 2.5rem;pointer-events:none}
+.cam-overlay > *{pointer-events:auto}
+.cam-top{width:100%;display:flex;justify-content:space-between;align-items:center}
+.progress-row{display:flex;gap:8px}
+.photo-dot{width:14px;height:14px;border-radius:50%;border:2.5px solid rgba(255,255,255,.7);background:transparent;transition:background .3s}
+.photo-dot.done{background:#fff}
+.angle-label{color:#fff;font-size:14px;font-weight:600;background:rgba(0,0,0,.55);padding:6px 14px;border-radius:20px}
+.cam-hint{color:rgba(255,255,255,.92);font-size:14px;text-align:center;background:rgba(0,0,0,.5);padding:10px 20px;border-radius:14px;max-width:300px;line-height:1.4}
+.shutter-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+.shutter{width:80px;height:80px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.45);cursor:pointer;transition:transform .1s;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+.shutter:active{transform:scale(.89)}
+.shutter-inner{width:62px;height:62px;border-radius:50%;background:#fff;border:2px solid #ddd}
+.cam-flip{position:absolute;top:3rem;right:1.5rem;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.45);border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:200}
+.flash.go{animation:fl .22s ease-out}
+@keyframes fl{0%{opacity:.95}100%{opacity:0}}
+.cam-err{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;text-align:center;padding:2rem;background:#111}
+.cam-err p{font-size:14px;opacity:.8;line-height:1.5}
+.cam-err-btn{padding:12px 28px;background:#534AB7;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer}
+
+/* Thumbnail strip */
+.thumb-strip{position:absolute;bottom:130px;left:0;right:0;display:flex;gap:8px;padding:0 1.5rem;justify-content:center}
+.thumb-item{width:52px;height:52px;border-radius:8px;overflow:hidden;border:2px solid rgba(255,255,255,.6)}
+.thumb-item img{width:100%;height:100%;object-fit:cover}
+
+/* Map list */
+#map-screen{overflow:hidden}
+.map-header{padding:1.5rem 1.25rem 1rem;border-bottom:.5px solid rgba(0,0,0,.1);background:#fff;flex-shrink:0}
+.map-header h1{font-size:24px;font-weight:600}
+.map-header p{font-size:13px;color:#666;margin-top:4px}
+.map-list{flex:1;overflow-y:auto;padding:1rem 1.25rem 6rem;display:flex;flex-direction:column;gap:12px}
+.map-card{background:#fff;border:.5px solid rgba(0,0,0,.1);border-radius:14px;padding:1rem;display:flex;gap:14px;align-items:center;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.06)}
+.map-card:active{transform:scale(.97)}
+.map-thumb{width:68px;height:68px;border-radius:10px;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:32px;background:#eee}
+.map-thumb img{width:100%;height:100%;object-fit:cover}
+.map-info{flex:1;min-width:0}
+.map-info h3{font-size:16px;font-weight:600}
+.map-info .date{font-size:12px;color:#888;margin-top:2px}
+.map-badge{font-size:11px;padding:3px 10px;border-radius:20px;display:inline-block;margin-top:6px;font-weight:500}
+.badge-done{background:#e1f5ee;color:#085041}
+.badge-new{background:#faeeda;color:#633806}
+.fab{position:fixed;bottom:2rem;right:1.5rem;width:60px;height:60px;border-radius:50%;background:#534AB7;color:#fff;border:none;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(83,74,183,.5);z-index:10}
+.fab:active{transform:scale(.91)}
+.empty-state{text-align:center;padding:4rem 1rem;color:#888}
+.empty-state div{font-size:56px;margin-bottom:1rem}
+
+/* Detail */
+#detail-screen{overflow:hidden}
+.detail-header{display:flex;align-items:center;gap:12px;padding:1.25rem;border-bottom:.5px solid rgba(0,0,0,.1);background:#fff;flex-shrink:0}
+.back-btn{width:38px;height:38px;border-radius:50%;border:.5px solid rgba(0,0,0,.18);background:#f5f4ee;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px}
+.detail-title{font-size:20px;font-weight:600}
+.stats-bar{display:flex;align-items:center;gap:10px;padding:.75rem 1.25rem;background:#fff;border-bottom:.5px solid rgba(0,0,0,.08);flex-shrink:0}
+.stat-pill{font-size:13px;font-weight:500;white-space:nowrap}
+.xp-bar-wrap{flex:1;background:#f0ede8;border-radius:6px;height:7px;overflow:hidden}
+.xp-bar{height:100%;background:linear-gradient(90deg,#534AB7,#7F77DD);border-radius:6px;transition:width .7s}
+.map-panorama{height:210px;background:#111;flex-shrink:0;position:relative;overflow:hidden}
+.pano-strip{display:flex;height:100%;transition:transform .38s cubic-bezier(.4,0,.2,1)}
+.pano-frame{min-width:100%;height:100%;position:relative;overflow:hidden}
+.pano-frame img{width:100%;height:100%;object-fit:cover}
+.pano-label{position:absolute;bottom:10px;left:12px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:3px 10px;border-radius:10px;font-weight:500}
+.pano-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.42);color:#fff;border:none;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pano-nav.left{left:10px}.pano-nav.right{right:10px}
+.pano-dots-row{position:absolute;bottom:10px;right:12px;display:flex;gap:5px}
+.pano-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.4)}
+.pano-dot.active{background:#fff}
+.quest-section{flex:1;overflow-y:auto;padding:1rem 1.25rem 2rem}
+.quest-section h2{font-size:13px;font-weight:600;margin-bottom:12px;color:#777;text-transform:uppercase;letter-spacing:.6px}
+.quest-card{background:#fff;border:.5px solid rgba(0,0,0,.09);border-radius:14px;padding:1rem;margin-bottom:10px;display:flex;gap:12px;align-items:flex-start;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.quest-card:active{transform:scale(.98)}
+.quest-card.done-card{border-color:#534AB7;background:#FAFAFF}
+.quest-icon{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;background:#f5f4ee}
+.quest-icon.done-icon{background:#EEEDFE}
+.quest-body{flex:1}
+.quest-title{font-size:14px;font-weight:600}
+.quest-title.done-title{text-decoration:line-through;opacity:.5}
+.quest-desc{font-size:12px;color:#777;margin-top:3px;line-height:1.5}
+.quest-xp{font-size:11px;color:#3C3489;background:#EEEDFE;padding:3px 9px;border-radius:20px;display:inline-block;margin-top:6px;font-weight:500}
+.quest-check{width:24px;height:24px;border-radius:50%;border:2px solid rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:700}
+.quest-check.done{background:#534AB7;border-color:#534AB7;color:#fff}
+
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:300;opacity:0;pointer-events:none;transition:opacity .25s}
+.modal-bg.show{opacity:1;pointer-events:auto}
+.modal{background:#fff;border-radius:24px 24px 0 0;padding:1.75rem 1.5rem 2.5rem;width:100%;max-width:500px;transform:translateY(100%);transition:transform .32s cubic-bezier(.4,0,.2,1)}
+.modal-bg.show .modal{transform:translateY(0)}
+.modal-emoji-big{font-size:52px;text-align:center;margin-bottom:.75rem}
+.modal h2{font-size:20px;font-weight:700;text-align:center;margin-bottom:8px}
+.modal p{font-size:14px;color:#666;text-align:center;line-height:1.5}
+.reward-row{display:flex;gap:12px;margin:18px 0 20px}
+.reward-chip{flex:1;background:#EEEDFE;border-radius:12px;padding:14px;text-align:center}
+.reward-chip .val{font-size:22px;font-weight:700;color:#3C3489}
+.reward-chip .lbl{font-size:11px;color:#534AB7;margin-top:3px;font-weight:500}
+.modal-btn{width:100%;padding:15px;background:#534AB7;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:600;cursor:pointer}
+.modal-btn:active{background:#3C3489}
+
+.confetti-wrap{position:fixed;inset:0;pointer-events:none;z-index:400;overflow:hidden}
+.confetto{position:absolute;width:9px;height:9px;border-radius:2px;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
+</style>
+</head>
+<body>
+
+<!-- CAMERA SCREEN -->
+<div class="screen" id="cam-screen">
+  <video id="cam-video" autoplay playsinline muted></video>
+  <canvas id="cam-canvas"></canvas>
+  <div class="flash" id="flash"></div>
+  <div id="cam-err" class="cam-err" style="display:none">
+    <div style="font-size:48px">📷</div>
+    <p id="cam-err-msg">A kamera eléréséhez engedélyezd a kamera hozzáférést a böngészőben!</p>
+    <button class="cam-err-btn" onclick="startCamera()">Újrapróbálás</button>
+    <button class="cam-err-btn" style="background:#333;margin-top:8px" onclick="showMapList()">Vissza a listához</button>
+  </div>
+  <button class="cam-flip" id="flip-btn" onclick="flipCamera()" title="Kamera váltás">🔄</button>
+  <div class="thumb-strip" id="thumb-strip"></div>
+  <div class="cam-overlay">
+    <div class="cam-top">
+      <div class="progress-row" id="prog-dots"></div>
+      <div class="angle-label" id="angle-lbl">⬆ Előre</div>
+    </div>
+    <div class="cam-hint" id="cam-hint">Fényképezd le a helyet mind a 4 irányból!</div>
+    <div class="shutter-wrap">
+      <div class="shutter" id="shutter-btn" onclick="takePhoto()">
+        <div class="shutter-inner" id="shutter-inner"></div>
+      </div>
+      <div style="color:rgba(255,255,255,.75);font-size:12px" id="shutter-label">Érintés a fényképezéshez</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAP LIST SCREEN -->
+<div class="screen hidden" id="map-screen">
+  <div class="map-header">
+    <h1>🗺 Helyeim</h1>
+    <p>Válassz egy feltérképezett helyet a küldetésekhez</p>
+  </div>
+  <div class="map-list" id="map-list"></div>
+  <button class="fab" onclick="startCamera()">+</button>
+</div>
+
+<!-- DETAIL SCREEN -->
+<div class="screen hidden" id="detail-screen">
+  <div class="detail-header">
+    <button class="back-btn" onclick="goBack()">‹</button>
+    <div class="detail-title" id="detail-title">1.map</div>
+  </div>
+  <div class="stats-bar">
+    <div class="stat-pill">⭐ <span id="stat-xp">0 XP</span></div>
+    <div class="xp-bar-wrap"><div class="xp-bar" id="xp-bar" style="width:0%"></div></div>
+    <div class="stat-pill">✅ <span id="stat-done">0/0</span></div>
+  </div>
+  <div class="map-panorama" id="pano-container">
+    <div class="pano-strip" id="pano-strip"></div>
+    <button class="pano-nav left" onclick="panoPrev()">‹</button>
+    <button class="pano-nav right" onclick="panoNext()">›</button>
+    <div class="pano-dots-row" id="pano-dots-ui"></div>
+  </div>
+  <div class="quest-section">
+    <h2>Küldetések</h2>
+    <div id="quest-list"></div>
+  </div>
+</div>
+
+<!-- QUEST COMPLETE MODAL -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <div class="modal-emoji-big" id="modal-emoji">🎉</div>
+    <h2>Küldetés teljesítve!</h2>
+    <p id="modal-desc"></p>
+    <div class="reward-row">
+      <div class="reward-chip"><div class="val" id="modal-xp">+50</div><div class="lbl">XP megszerzve</div></div>
+      <div class="reward-chip"><div class="val" id="modal-total">50</div><div class="lbl">Összes map XP</div></div>
+    </div>
+    <button class="modal-btn" onclick="closeModal()">Folytatás ✓</button>
+  </div>
+</div>
+<div class="confetti-wrap" id="confetti-wrap"></div>
+
+<script>
+const ANGLES=['⬆ Előre','➡ Jobbra','⬇ Hátra','⬅ Balra'];
+const QUESTS=[
+  {icon:'🔍',title:'Fedezd fel a bejáratot!',desc:'Keress valami érdekeset a bejárat körül.',xp:50,emoji:'🔍'},
+  {icon:'🌱',title:'Találj egy növényt!',desc:'Keress egy növényt a közelben – fa, bokor, virág, bármi!',xp:40,emoji:'🌿'},
+  {icon:'💡',title:'Titkos zugot keresünk!',desc:'Találj olyan helyet, amit nem vesz észre mindenki.',xp:80,emoji:'🎉'},
+  {icon:'🗺️',title:'Térképezd fel a határokat!',desc:'Járd körbe a helyet és figyeld meg a széleit.',xp:60,emoji:'🗺️'},
+  {icon:'☀️',title:'Legvilágosabb pont!',desc:'Keress ahol a legtöbb napfény esik be.',xp:45,emoji:'✨'},
+  {icon:'🎵',title:'Hallgasd meg a helyet!',desc:'Figyelj oda – milyen hangok jellemzik?',xp:35,emoji:'🎵'},
+  {icon:'👥',title:'Üdvözölj valakit!',desc:'Szólíts meg valakit a helyen barátságosan.',xp:70,emoji:'😊'},
+  {icon:'📸',title:'Legjobb szög!',desc:'Találd meg a tökéletes kameraállást.',xp:55,emoji:'📷'},
+  {icon:'🏺',title:'Régi vs. új!',desc:'Találj valamit régit és valamit újat ugyanitt.',xp:65,emoji:'🏺'},
+  {icon:'🌈',title:'Számolja a színeket!',desc:'Keress legalább 5 különböző színt ezen a helyen.',xp:50,emoji:'🌈'},
+  {icon:'🧭',title:'Iránytű teszt!',desc:'Állj középre és mutass mind a 4 égtáj felé sorban.',xp:30,emoji:'🧭'},
+  {icon:'📏',title:'Becsüld meg a méretet!',desc:'Hány lépés a hely hossza és szélessége?',xp:45,emoji:'📏'},
+];
+
+let state={
+  maps: JSON.parse(localStorage.getItem('pg_maps')||'[]'),
+  currentMap: null,
+  photoCount: 0,
+  photos: [],
+  panoIdx: 0,
+  stream: null,
+  facingMode: 'environment',
+};
+
+function save(){ localStorage.setItem('pg_maps', JSON.stringify(state.maps)); }
+
+// ---- CAMERA ----
+async function startCamera(){
+  showScreen('cam');
+  state.photoCount=0; state.photos=[];
+  document.getElementById('thumb-strip').innerHTML='';
+  document.getElementById('shutter-inner').style.display='';
+  document.getElementById('shutter-label').textContent='Érintés a fényképezéshez';
+  document.getElementById('cam-err').style.display='none';
+  updateCamUI();
+  await openStream();
+}
+
+async function openStream(){
+  if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode: state.facingMode, width:{ideal:1920}, height:{ideal:1080} },
+      audio: false
+    });
+    state.stream = stream;
+    const vid = document.getElementById('cam-video');
+    vid.srcObject = stream;
+    vid.style.display='block';
+    document.getElementById('cam-err').style.display='none';
+  } catch(e){
+    document.getElementById('cam-video').style.display='none';
+    document.getElementById('cam-err').style.display='flex';
+    let msg='Kamera hozzáférés megtagadva. Engedélyezd a böngészőbeállításokban!';
+    if(e.name==='NotFoundError') msg='Nem található kamera az eszközön.';
+    else if(e.name==='NotAllowedError') msg='Kamera hozzáférés megtagadva! Engedélyezd a böngészőbeállításokban.';
+    document.getElementById('cam-err-msg').textContent=msg;
+  }
+}
+
+async function flipCamera(){
+  state.facingMode = state.facingMode==='environment'?'user':'environment';
+  await openStream();
+}
+
+function stopCamera(){
+  if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; }
+}
+
+function updateCamUI(){
+  document.getElementById('prog-dots').innerHTML=
+    ANGLES.map((_,i)=>`<div class="photo-dot${i<state.photoCount?' done':''}"></div>`).join('');
+  if(state.photoCount<4){
+    document.getElementById('angle-lbl').textContent=ANGLES[state.photoCount];
+    document.getElementById('cam-hint').textContent=`${state.photoCount}/4 kép • Fordulj: ${ANGLES[state.photoCount].split(' ')[1]}`;
+  } else {
+    document.getElementById('angle-lbl').textContent='✅ Kész!';
+    document.getElementById('cam-hint').textContent='Mind a 4 kép megvan! Érintsd a gombot a mentéshez.';
+  }
+}
+
+function takePhoto(){
+  if(state.photoCount>=4){ saveMap(); return; }
+  const vid=document.getElementById('cam-video');
+  const cvs=document.getElementById('cam-canvas');
+  cvs.width=vid.videoWidth||640;
+  cvs.height=vid.videoHeight||480;
+  const ctx2=cvs.getContext('2d');
+  // Mirror if selfie cam
+  if(state.facingMode==='user'){
+    ctx2.translate(cvs.width,0); ctx2.scale(-1,1);
+  }
+  ctx2.drawImage(vid,0,0,cvs.width,cvs.height);
+  const snap=cvs.toDataURL('image/jpeg',0.6);
+  state.photos.push(snap);
+  state.photoCount++;
+
+  // Flash
+  const flash=document.getElementById('flash');
+  flash.classList.remove('go'); void flash.offsetWidth; flash.classList.add('go');
+
+  // Thumbnail strip
+  const strip=document.getElementById('thumb-strip');
+  const img=document.createElement('div');
+  img.className='thumb-item';
+  img.innerHTML=`<img src="${snap}">`;
+  strip.appendChild(img);
+
+  updateCamUI();
+  if(state.photoCount===4){
+    document.getElementById('shutter-inner').innerHTML='<span style="font-size:28px">💾</span>';
+    document.getElementById('shutter-label').textContent='Érintés a mentéshez';
+  }
+}
+
+function saveMap(){
+  stopCamera();
+  const n=state.maps.length+1;
+  const pool=[...QUESTS].sort(()=>Math.random()-.5);
+  const map={
+    id:Date.now(), name:`${n}.map`,
+    photos:state.photos,
+    quests:pool.slice(0,4).map((q,i)=>({...q,id:i,done:false})),
+    xp:0,
+    created:new Date().toLocaleDateString('hu-HU'),
+  };
+  state.maps.push(map); save();
+  showMapList();
+}
+
+// ---- MAP LIST ----
+function showMapList(){
+  stopCamera();
+  showScreen('map');
+  const list=document.getElementById('map-list');
+  if(!state.maps.length){
+    list.innerHTML=`<div class="empty-state"><div>📷</div><p>Még nincs feltérképezett helyed.<br>Nyomd a <b>+</b> gombot az első helyed lefényképezéséhez!</p></div>`;
+    return;
+  }
+  list.innerHTML=state.maps.map(m=>{
+    const done=m.quests.filter(q=>q.done).length, total=m.quests.length;
+    return`<div class="map-card" onclick="openMap(${m.id})">
+      <div class="map-thumb">
+        ${m.photos[0]?`<img src="${m.photos[0]}">`:'📍'}
+      </div>
+      <div class="map-info">
+        <h3>${m.name}</h3>
+        <div class="date">${m.created} • ${m.xp||0} XP</div>
+        <span class="map-badge ${done===total?'badge-done':'badge-new'}">${done===total?'✅':'🎯'} ${done}/${total} küldetés</span>
+      </div>
+      <span style="font-size:22px;color:#bbb">›</span>
+    </div>`;
+  }).join('');
+}
+
+// ---- DETAIL ----
+function openMap(id){
+  const map=state.maps.find(m=>m.id===id);
+  if(!map)return;
+  state.currentMap=map; state.panoIdx=0;
+  document.getElementById('detail-title').textContent=map.name;
+  buildPano(map); renderQuests(map); updateStats(map);
+  showScreen('detail');
+}
+
+function buildPano(map){
+  document.getElementById('pano-strip').innerHTML=map.photos.map((p,i)=>`
+    <div class="pano-frame">
+      <img src="${p}" alt="${ANGLES[i]}">
+      <div class="pano-label">${ANGLES[i]}</div>
+    </div>`).join('');
+  buildPanoDots(map);
+  let sx=0;
+  const c=document.getElementById('pano-container');
+  c.ontouchstart=e=>{sx=e.touches[0].clientX};
+  c.ontouchend=e=>{
+    const dx=e.changedTouches[0].clientX-sx;
+    if(Math.abs(dx)>40){ dx<0?panoNext():panoPrev(); }
+  };
+}
+
+function buildPanoDots(map){
+  document.getElementById('pano-dots-ui').innerHTML=
+    map.photos.map((_,i)=>`<div class="pano-dot${i===state.panoIdx?' active':''}"></div>`).join('');
+}
+
+function setPanoIdx(i){
+  const map=state.currentMap; if(!map)return;
+  state.panoIdx=(i+map.photos.length)%map.photos.length;
+  document.getElementById('pano-strip').style.transform=`translateX(-${state.panoIdx*100}%)`;
+  buildPanoDots(map);
+}
+function panoPrev(){ setPanoIdx(state.panoIdx-1); }
+function panoNext(){ setPanoIdx(state.panoIdx+1); }
+
+function renderQuests(map){
+  document.getElementById('quest-list').innerHTML=map.quests.map(q=>`
+    <div class="quest-card${q.done?' done-card':''}" onclick="completeQuest(${q.id})">
+      <div class="quest-icon${q.done?' done-icon':''}">${q.icon}</div>
+      <div class="quest-body">
+        <div class="quest-title${q.done?' done-title':''}">${q.title}</div>
+        <div class="quest-desc">${q.desc}</div>
+        <span class="quest-xp">+${q.xp} XP</span>
+      </div>
+      <div class="quest-check${q.done?' done':''}">${q.done?'✓':''}</div>
+    </div>`).join('');
+}
+
+function updateStats(map){
+  const done=map.quests.filter(q=>q.done).length, total=map.quests.length;
+  document.getElementById('stat-xp').textContent=(map.xp||0)+' XP';
+  document.getElementById('stat-done').textContent=done+'/'+total;
+  document.getElementById('xp-bar').style.width=(total?done/total*100:0)+'%';
+}
+
+function completeQuest(id){
+  const map=state.currentMap;
+  const q=map.quests.find(x=>x.id===id);
+  if(!q||q.done)return;
+  q.done=true; map.xp=(map.xp||0)+q.xp;
+  const idx=state.maps.findIndex(m=>m.id===map.id);
+  state.maps[idx]=map; save();
+  renderQuests(map); updateStats(map);
+  showModal(q,map); spawnConfetti();
+}
+
+// ---- MODAL ----
+function showModal(q,map){
+  document.getElementById('modal-emoji').textContent=q.emoji;
+  document.getElementById('modal-desc').textContent=q.title;
+  document.getElementById('modal-xp').textContent='+'+q.xp;
+  document.getElementById('modal-total').textContent=map.xp;
+  document.getElementById('modal-bg').classList.add('show');
+}
+function closeModal(){ document.getElementById('modal-bg').classList.remove('show'); }
+
+// ---- CONFETTI ----
+function spawnConfetti(){
+  const wrap=document.getElementById('confetti-wrap');
+  const colors=['#534AB7','#7F77DD','#1D9E75','#D85A30','#FAC775','#F4C0D1'];
+  for(let i=0;i<30;i++){
+    const el=document.createElement('div');
+    el.className='confetto';
+    el.style.cssText=`left:${Math.random()*100}%;top:-20px;background:${colors[i%colors.length]};animation-duration:${.7+Math.random()*.9}s;animation-delay:${Math.random()*.35}s`;
+    wrap.appendChild(el);
+    el.addEventListener('animationend',()=>el.remove());
+  }
+}
+
+// ---- ROUTING ----
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('hidden',s.id!==id+'-screen'));
+}
+function goBack(){ showMapList(); }
+
+// Boot
+if(state.maps.length>0) showMapList();
+else startCamera();
+</script>
+</body>
+</html>
